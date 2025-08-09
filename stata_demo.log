@@ -1,0 +1,174 @@
+
+  ___  ____  ____  ____  ____ ®
+ /__    /   ____/   /   ____/      18.0
+___/   /   /___/   /   /___/       MP—Parallel Edition
+
+ Statistics and Data Science       Copyright 1985-2023 StataCorp LLC
+                                   StataCorp
+                                   4905 Lakeway Drive
+                                   College Station, Texas 77845 USA
+                                   800-STATA-PC        https://www.stata.com
+                                   979-696-4600        stata@stata.com
+
+Stata license: 2-user 32-core network perpetual
+Serial number: 501806325192
+  Licensed to: NYU HPC
+               New York
+
+Notes:
+      1. Stata is running in batch mode.
+      2. Unicode is supported; see help unicode_advice.
+      3. More than 2 billion observations are allowed; see help obs_advice.
+      4. Maximum number of variables is set to 5,000 but can be increased;
+          see help set_maxvar.
+
+. do /scratch/ak6330/stata-jupyter/stata_demo.do 
+
+. * Demo using Stata's cancer dataset
+. use "cancer.dta", clear
+(Patient survival in drug trial)
+
+. 
+. * COMMENTED OUT: Used to save data in order to load into Jupyter
+. * save "cancer.dta", replace
+. 
+. * Contains studytime (months to death / censoring), died (1 if dead,0 if cens
+> ored), treatment type/drug, age
+. describe
+
+Contains data from cancer.dta
+ Observations:            48                  Patient survival in drug trial
+    Variables:             8                  3 Mar 2022 16:09
+-------------------------------------------------------------------------------
+Variable      Storage   Display    Value
+    name         type    format    label      Variable label
+-------------------------------------------------------------------------------
+studytime       byte    %8.0g                 Months to death or end of exp.
+died            byte    %8.0g      diedlbl    Patient died
+drug            byte    %8.0g      type       Drug type
+age             byte    %8.0g                 Patient's age at start of exp.
+_st             byte    %8.0g                 1 if record is to be used; 0
+                                                otherwise
+_d              byte    %8.0g                 1 if failure; 0 if censored
+_t              byte    %10.0g                Analysis time when record ends
+_t0             byte    %10.0g                Analysis time when record begins
+-------------------------------------------------------------------------------
+Sorted by: 
+
+. codebook, compact
+
+Variable   Obs Unique      Mean  Min  Max  Label
+-------------------------------------------------------------------------------
+studytime   48     28      15.5    1   39  Months to death or end of exp.
+died        48      2  .6458333    0    1  Patient died
+drug        48      3     1.875    1    3  Drug type
+age         48     18    55.875   47   67  Patient's age at start of exp.
+_st         48      1         1    1    1  1 if record is to be used; 0 othe...
+_d          48      2  .6458333    0    1  1 if failure; 0 if censored
+_t          48     28      15.5    1   39  Analysis time when record ends
+_t0         48      1         0    0    0  Analysis time when record begins
+-------------------------------------------------------------------------------
+
+. 
+. * If we want to, say, analyze treatment by age group
+. * First, prepare and transform data (munge)
+. gen age_group = .
+(48 missing values generated)
+
+. replace age_group = 1 if age < 50
+(8 real changes made)
+
+. replace age_group = 2 if age >= 50 & age < 60
+(27 real changes made)
+
+. replace age_group = 3 if age >= 60 & age < 70
+(13 real changes made)
+
+. replace age_group = 4 if age >= 70 & age != .
+(0 real changes made)
+
+. 
+. label define age_grp 1 "Under 50" 2 "50-59" 3 "60-69" 4 "70+"
+
+. label values age_group age_grp
+
+. 
+. * Create survival time in years
+. gen survival_years = studytime / 12
+
+. 
+. * Create treatment labels
+. label define drug_lbl 1 "Placebo" 2 "Drug A" 3 "Drug B"
+
+. label values drug drug_lbl
+
+. 
+. * Generate a pseudo "time period" variable for trend analysis
+. * cancer data doesn't have years, use enrollment order instead
+. gen patient_id = _n
+
+. gen enrollment_period = ceil(patient_id/12)  // Group patients into periods
+
+. 
+. * Summary statistics by treatment group
+. tabstat survival_years age died, by(drug) stats(mean sum count)
+
+Summary statistics: Mean, Sum, N
+Group variable: drug (Drug type)
+
+   drug |  surviv~s       age      died
+--------+------------------------------
+Placebo |       .75     56.05       .95
+        |        15      1121        19
+        |        20        20        20
+--------+------------------------------
+ Drug A |  1.244048  56.92857  .4285714
+        |  17.41667       797         6
+        |        14        14        14
+--------+------------------------------
+ Drug B |  2.113095  54.57143  .4285714
+        |  29.58333       764         6
+        |        14        14        14
+--------+------------------------------
+  Total |  1.291667    55.875  .6458333
+        |        62      2682        31
+        |        48        48        48
+---------------------------------------
+
+. 
+. * Collapse data by drug and age group
+. preserve
+
+. collapse (mean) mean_survival=survival_years ///
+>          (mean) mean_age=age ///
+>          (sum) n_died=died ///
+>          (count) n_patients=died, by(drug age_group)
+
+. 
+. list, sepby(drug)
+
+     +--------------------------------------------------------------+
+     |    drug   age_gr~p   mean_s~l   mean_age   n_died   n_pati~s |
+     |--------------------------------------------------------------|
+  1. | Placebo   Under 50   1.027778         49        3          3 |
+  2. | Placebo      50-59   .8333333    54.6667       11         12 |
+  3. | Placebo      60-69   .3833333       63.6        5          5 |
+     |--------------------------------------------------------------|
+  4. |  Drug A   Under 50      1.375         48        1          2 |
+  5. |  Drug A      50-59    1.47619    54.1429        2          7 |
+  6. |  Drug A      60-69   .8666667       64.4        3          5 |
+     |--------------------------------------------------------------|
+  7. |  Drug B   Under 50   2.277778    48.3333        0          3 |
+  8. |  Drug B      50-59    1.96875     54.625        5          8 |
+  9. |  Drug B      60-69   2.333333    60.6667        1          3 |
+     +--------------------------------------------------------------+
+
+. 
+. * Save collapsed results
+. export delimited using "cancer_summary_results_stata.csv", replace
+file cancer_summary_results_stata.csv saved
+
+. restore
+
+. 
+end of do-file
